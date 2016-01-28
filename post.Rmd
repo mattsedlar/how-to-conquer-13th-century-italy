@@ -1,0 +1,193 @@
+---
+title: "How Game Theory Can Help You Conquer 13th-Century Italy"
+author: "Matthew Sedlar"
+date: "January 10, 2016"
+output: html_document
+---
+
+Condottiere, published by Fantasy Flight Games, is a card/board game for 2-6 players that relies heavily on bluffing and negotiation in order to conquer city-states in 13th century Italy. It also -- in some ways -- resembles a Colonel Blotto game, in which players must distribute resources over various battlefields in order to achieve victory.
+
+### Who is Colonel Blotto?
+
+This is a brief description of a Colonel Blotto game found at [Mind Your Decisions](http://mindyourdecisions.com/blog/2012/02/21/attacking-a-target-optimally-an-example-of-war-game-theory-from-rand-1957) based on a 1957 paper from the RAND corporation. A general plans to attack two enemy bases, one with 1/3 of the enemy's resources and the other with 2/3. The general has two planes and the enemy has two defense missiles, but the general has no idea which base is being defended. The general's options are to send either both planes to one base or one to each. 
+
+In game theory, this is called a two-person, zero-sum game, "zero sum" meaning that one player's gain or loss will be offset by the loss or gain of the other player. 
+
+Below is a matrix looking at the options from the general's perspective.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+require(knitr)
+
+## Colonel Blotto Example
+
+colonel.blotto <- matrix(c(0,"33%","33%","66%",0,"33%","66%","66%",0), ncol=3,byrow = F)
+colnames(colonel.blotto) <- c("(2,0)","(1,1)","(0,2)") 
+rownames(colonel.blotto) <- c("(2,0)","(1,1)","(0,2)")
+
+kable(colonel.blotto)
+
+```
+
+The zero in the upper left represents what would happen if the general sent both planes to one base that was defended by two missiles. The outcome to the right is if the general sent both planes to the base with 1/3 of the enemy resources but it is only defended by one missile. The outcome of that strategy is that 66% of the enemy's resources remain.
+
+The point of putting together a matrix like this is to look at the options and determine which strategy maximizes gains (attacker) or minimizes losses (defender).
+
+If you have played Condottiere, you can see where I'm going with this.
+
+### Mamma Mia, Mercenaries!
+
+Condottiere consists of a battlefield where players fight over various city states in Italy. The player with the most mercenaries on a battlefield at the end of a battle wins the city state. If you capture three contiguous city states or five anywhere on the map, you win.
+
+[IMAGE]
+
+I said it resembles a Colonel Blotto game only in some ways, so here are some key differences:
+
+* In a zero-sum game, players do not have mutual interests, which would make it a cooperative game. Up to six players can play Condottiere, and at times, several players may work cooperatively to unseat the player with the most captured city states. The best, direct example of a zero-sum game of Condottiere is with only two players. So to avoid confusion, I will covering a two-person game in this post.
+
+* The game also includes effect cards that can change the outcome of hands, but I'll leave those out as well. I'll be focusing purely on the mercenaries. 
+
+* Finally, in the Colonel Blotto game, the timing of moves is not specified so it's assumed they are simultaneous -- in other words the attacker sends the planes around the same time the defender deploys the missiles to one or both bases. In Condottiere there are actual turns. The game has what are called "commitment moves," where the player who goes last can observe and respond to the first player and can plan for different courses of action ahead of time.
+
+### Simulating a Game
+
+I'm going to simulate a game of Condottiere in which players are dealt seven mercenary cards and three effects cards, which will be set aside. The goal in Condottiere is to win three contiguous battles, but to make this less complex I'm going to only follow two battles. It's assumed after the second battle the players will be dealt new cards, which typically happens after a couple of rounds. But one of the keys to winning is to capture the best city states early in the game and let your opponents scramble to keep up.
+
+I'm going to deal a hand to player 1 and then construct a theoretical player 2. The purpose of constructing a theoretical opponent is you don't know what kind of cards your opponents are holding, but you could estimate. 
+
+I've run 1,000 simulations of dealing the cards, summing up the total of mercenaries for each round (effect cards are represented by zero). This way, I can determine the mean sum of cards usually dealt and allot that to our theoretical player 2. The plot below looks at the results of the simulations.   
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+
+# deck minus effects cards
+deck <- c(rep(1,10),
+          rep(2,8),
+          rep(3,8),
+          rep(4,8),
+          rep(5,8),
+          rep(6,8),
+          rep(10,8),
+          rep(0,52)) # effect cards are represented by zero
+
+set.seed(1234)
+
+player1 <- sample(deck, 10, replace = F)
+
+simulations <- data.frame(sums=replicate(1000, sum(sample(deck,10,replace=F))))
+
+require(ggplot2)
+ggplot(simulations, aes(sums, fill=..count..)) + 
+  geom_histogram(binwidth = 2.9) +
+  scale_fill_gradient("Count", low="pink", high="red") +
+  xlab("Total Mercenaries Dealt") +
+  ylab("Count") +
+  ggtitle("Distribution of Mercenaries Dealt During Simulations") +
+    theme(panel.background=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(color="grey",fill=NA),
+        axis.title.x=element_text(vjust=1),
+        axis.text=element_text(color="black"),
+        plot.title=element_text(face="bold", size=15, vjust=2))
+
+mean.simulations <- mean(simulations$sums)
+```
+
+In this game, player 1 has `r sum(player1)` mercenaries and theoretical player 2 has `r round(mean.simulations,0)`.
+
+### Constructing a Payoff Matrix
+
+Let's say the first player, whomever it is, decides to choose Firenze as the first region in which a battle will be fought. Firenze, as the map below shows, has several adjoining city states, making it a key battle in the game.
+
+[IMAGE]
+
+Player 1 needs to know how to appropriately distribute his or her resources in order to win Firenze, or at the very least prevent theoretical player 2 from winning the next battle as well.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results="hide"}
+
+n1 <- sum(player1)
+n2 <- round(mean.simulations,0)
+
+percentages.player1 <- c(round(n1 *.75,0),
+                         round(n1 *.5,0),
+                         round(n1 *.25),0)
+percentages.player2.th <- c(round(n2 *.75,0),
+                         round(n2 *.5,0),
+                         round(n2 *.25),0)
+
+battlefields.won <- function(a,b) {
+  if(a > b ) { print(1) }
+  else if (a < b) { print(0) }
+  else if (a == b) { print(0) }
+}
+
+outcomes.p1 <- c()
+outcomes.p2 <- c()
+
+l <- 1
+each <- 1 
+
+while(l < length(percentages.player1)) {
+ if (each < length(percentages.player2.th)) {  
+   outcomes.p1 <- c(outcomes.p1,
+                 battlefields.won(percentages.player1[l], 
+                                  percentages.player2.th[each]))
+   outcomes.p2 <- c(outcomes.p2,
+                 battlefields.won(n1 - percentages.player1[l],
+                                  n2- percentages.player2.th[each]))
+
+      each <- each + 1 
+ }
+ else { 
+   l <- l + 1
+   each <- 1
+ } 
+}
+
+pair <- function(x,y) sprintf("(%d,%d)", x, y)
+
+outcome.matrix <- matrix(pair(outcomes.p1,outcomes.p2),
+                         ncol=3, byrow=T)
+rownames(outcome.matrix) <- c(paste("(",percentages.player1[1],",", 
+                                  n1 - percentages.player1[1],")",sep=""),
+                              paste("(",percentages.player1[2],",", 
+                                  n1 - percentages.player1[2],")",sep=""),
+                              paste("(",percentages.player1[3],",", 
+                                  n1 - percentages.player1[3],")",sep=""))
+
+colnames(outcome.matrix) <- c(paste("(",percentages.player2.th[1],",", 
+                                  n2 - percentages.player2.th[1],")",sep=""),
+                              paste("(",percentages.player2.th[2],",", 
+                                  n2 - percentages.player2.th[2],")",sep=""),
+                              paste("(",percentages.player2.th[3],",", 
+                                  n2 - percentages.player2.th[3],")",sep=""))
+
+```
+
+Below is a payoff matrix showing if player 1 and theoretical player 2 play 75%, 50%, and 25% of their mercenaries in the first battle and the remaining mercenaries in the second battle.  
+
+```{r echo=FALSE}
+kable(outcome.matrix)
+```
+
+#### How to Read the Matrix
+
+The top left corner for example represents if player 1 plays 75%, or `r round(n1 *.75,0)`, of his/her mercenaries in the first round leaving only `r n1 - round(n1 *.75,0)` for the second battle, or `r rownames(outcome.matrix)[1]`. Above that is if theoretical player 2 plays 75%, or `r round(n2 *.75,0)`, of his/her mercenaries and leaves `r n2 - round(n2 *.75,0)` for the next round, or `r colnames(outcome.matrix)[1]`. The result is that player 1 loses both battles, as theoretical player 2 has superior forces in both battles, hence (0,0).
+
+Obviously it doesn't represent *all* of the strategies available to both players (we could be here all year if I did that), but it gives you an idea of how this works.
+
+#### How the $%& Does Player 1 Win?
+
+In this very specific scenario, there is no dominant strategy. That means there is no specific move that is better than the others. Even if player 1 were to use 100% of his/her mercenaries, theoretical player 2 could (or in this case, *does*) have more mercenaries. But remember, turns are not simultaneous. 
+
+Let's say that no matter what, theoretical player 2 is going to try to win Firenze and player 1 senses this. That means, there is no chance theoretical player 2 is going to distribute only 25% of the mercenaries in the first battle. Suddenly, our payoff matrix looks a little different.
+
+```{r echo=FALSE}
+
+kable(outcome.matrix[,-3])
+
+```
+
+Now player 1 has a dominant strategy. If player 1 holds back from playing all his/her mercenaries, he/she can win the next battle. This is represented by the bottom row, or `r rownames(outcome.matrix)[3]`. It's not a "win," but it keeps player 1 in the game for much longer. This is called a *minimax* strategy, as losing one battle but winning another represents player 1's smallest possible maximum loss and greatest possible minimum gain.
+
+Obviously Condottiere is a lot more complex than the Colonel Blotto example, but they have a lot in common.
